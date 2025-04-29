@@ -1,0 +1,169 @@
+
+openapi: 3.0.3
+info:
+  title: Leave API
+  description: API for managing leaves in the Leave Management System
+  version: 1.0.0
+paths:
+  /:
+    post:
+      summary: Apply for a leave
+      tags:
+        - Leave
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - startDate
+                - endDate
+                - reason
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                  example: '2025-05-01'
+                endDate:
+                  type: string
+                  format: date
+                  example: '2025-05-03'
+                reason:
+                  type: string
+                  example: Family event
+      responses:
+        '201':
+          description: Leave applied successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                  userId:
+                    type: string
+                  startDate:
+                    type: string
+                    format: date
+                  endDate:
+                    type: string
+                    format: date
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, approved, rejected]
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: Get all leaves for the authenticated user
+      tags:
+        - Leave
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of leaves
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    _id:
+                      type: string
+                    userId:
+                      type: string
+                    startDate:
+                      type: string
+                      format: date
+                    endDate:
+                      type: string
+                      format: date
+                    reason:
+                      type: string
+                    status:
+                      type: string
+                      enum: [pending, approved, rejected]
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /{leaveId}:
+    get:
+      summary: Get a specific leave by ID
+      tags:
+        - Leave
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: leaveId
+          required: true
+          schema:
+            type: string
+          description: ID of the leave
+      responses:
+        '200':
+          description: Leave details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                  userId:
+                    type: string
+                  startDate:
+                    type: string
+                    format: date
+                  endDate:
+                    type: string
+                    format: date
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, approved, rejected]
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Leave not found
+#           content:
+#             application/json:
+#               schema:
+#                 $ref: '#/components/schemas/Error'
+# # components:
+#   schemas:
+#     Error:
+#       type: object
+#       properties:
+#         message:
+#           type: string
+#   securitySchemes:
+#     bearerAuth:
+#       type: http
+#       scheme: bearer
+#       bearerFormat: JWT
