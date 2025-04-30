@@ -9,6 +9,16 @@ module.exports = {
 	LEAVE_ALREADY_EXISTS: 'You already applied for leave on this date.',
 	LEAVE_BACKDATED: 'Backdated leave older than 3 days is not allowed.',
 	USER_NOT_FOUND: 'User not found.',
-	UNAUTHORIZED: 'Unauthorized access.'
+	UNAUTHORIZED: 'Unauthorized access.',
+	INVALID_OTP : 'Invalid OTP.',
+	OTP_VERIFIED : 'OTP verified successfully.',
+	PASSWORD_MISMATCH : 'Password does not match.',
+	PASSWORD_RESET_LINK_SENT : 'Password reset link sent successfully.',
+	INVALID_TOKEN : 'Invalid token.',
+	PASSWORD_UPDATED : 'Password updated successfully.',
+	LEAVE_ON_WEEKEND : 'Leaves cannot be applied on weekends.',
+	PASSWORD_RESET_SUCCESSFULLY : 'Password reset successfully.',
+	OTP_INVALID : 'Invalid OTP.'
+
   };
   

@@ -7,138 +7,89 @@ const nodemailer = require('nodemailer');
 const transport = require('../config/nodemailer');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
+const userService = require('../services/user.service');
+const sendEmail = require('../utils/sendEmail');
+const bcrypt = require('bcrypt');
+const { setDefaultAutoSelectFamily } = require('net');
 
 exports.signup = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    const existing = await User.findOne({ email });
-
-    if (existing) {
-      logger.warn(`Signup attempt with existing email: ${email}`);
-      return res.status(httpStatus.CONFLICT).json({ message: 'Email already exists' });
-    }
-
-    const user = new User({ name, email, password });
-    await user.save();
-
-    logger.info(`User created successfully: ${email}`);
-    res.status(httpStatus.CREATED).json({ message: messages.USER_CREATED });
+    const data = req.body;
+    const user = await userService.signup(data); 
+ 
+    logger.info(`User created successfully: ${user.email}`); 
+    res.status(httpStatus.CREATED).json({ message: messages.USER_CREATED, user });
   } catch (error) {
     logger.error(`Error during signup for email: ${req.body.email}`, { error: error.message });
-    res.status(httpStatus.SERVER_ERROR).json({ message: error.message });
+    
+    res.status(error.status || httpStatus.SERVER_ERROR).json({ 
+      message: error.message || messages.SERVER_ERROR 
+    });
   }
 };
-
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const token = await userService.login(req.body);
 
-    if (!user || !(await user.comparePassword(password))) {
-      logger.warn(`Invalid login attempt for email: ${email}`);
-      return res.status(httpStatus.BAD_REQUEST).json({ message: messages.INVALID_CREDENTIALS });
-    }
-
-    const token = generateToken(user);
-    logger.info(`User logged in successfully: ${email}`);
+    logger.info(`User logged in successfully: ${req.body.email}`);
     res.status(httpStatus.OK).json({ token, message: messages.LOGIN_SUCCESS });
   } catch (error) {
     logger.error(`Error during login for email: ${req.body.email}`, { error: error.message });
     res.status(httpStatus.SERVER_ERROR).json({ message: error.message });
   }
+}; 
+exports.forgetPassword = async (req, res) => {
+  try {
+    const email = req.body.email;
+    const result = await userService.forgetPassword(email);
+    logger.info('Password reset initiated', email);
+    return res.status(httpStatus.OK).json(result);
+  } catch (error) {
+    logger.error(`Failed to reset password: ${error.message}`);
+    return res.status(error.status || httpStatus.SERVER_ERROR).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
+
+
 
 exports.sendOtp = async (req, res) => {
   try {
-    const { email } = req.body;
-    const { otp } = generateOtp(); 
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      logger.warn(`OTP requested for non-existent email: ${email}`);
-      return res.status(httpStatus.NOT_FOUND).json({ message: messages.USER_NOT_FOUND });
-    }
-
-    await redis.set(`otp:${email}`, otp, { EX: 300 }); 
-
-    await transport.sendMail({
-      to: user.email,
-      subject: 'Your OTP Code',
-      text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
-    });
-
-    logger.info(`OTP sent to ${email}`);
-    res.status(httpStatus.OK).json({ message: messages.OTP_SENT });
+    const {resetToken} = req.body;
+    const result = await userService.sendOtp(resetToken);
+    logger.info(`OTP sent to ${req.body.email}`);
+    return res.status(httpStatus.OK).json(result);
   } catch (error) {
-    logger.error(`Error sending OTP to ${req.body.email}`, { error: error.message });
-    res.status(httpStatus.SERVER_ERROR).json({ message: error.message });
+    logger.error(`Send OTP error: ${error.message}`);
+    return res.status(error.status || httpStatus.SERVER_ERROR).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
+
 
 exports.verifyOtp = async (req, res) => {
   try {
-    const { email, otp } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      logger.warn(`OTP verification attempted for non-existent email: ${email}`);
-      return res.status(httpStatus.NOT_FOUND).json({ message: messages.USER_NOT_FOUND });
-    }
-
-    const storedOtp = await redis.get(`otp:${email}`);
-    if (!storedOtp) {
-      logger.warn(`OTP expired for email: ${email}`);
-      return res.status(httpStatus.BAD_REQUEST).json({ message: messages.OTP_EXPIRED });
-    }
-
-    if (storedOtp !== otp) {
-      logger.warn(`Invalid OTP provided for email: ${email}`);
-      return res.status(httpStatus.BAD_REQUEST).json({ message: 'Invalid OTP' });
-    }
-
-    user.isVerified = true;
-    await user.save();
-    await redis.del(`otp:${email}`);
-
-    logger.info(`OTP verified for ${email}`);
-    res.status(httpStatus.OK).json({ message: messages.OTP_VERIFIED });
-  } catch (error) {
-    logger.error(`Error verifying OTP for email: ${req.body.email}`, { error: error.message });
-    res.status(httpStatus.SERVER_ERROR).json({ message: error.message });
-  }
-};
-
-exports.forgetPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      logger.warn(`Password reset requested for non-existent email: ${email}`);
-      return res.status(httpStatus.NOT_FOUND).json({ message: 'User not found' });
-    }
-
-    const resetToken = generateToken(user, '1h');
-    const resetLink = `http://localhost:5000/users/api/v1/reset-password?token=${resetToken}`;
-
-    const mailOptions = {
-      to: user.email,
-      subject: 'Password Reset',
-      text: `Click the link to reset your password: ${resetLink}`,
-    };
-
-    await transport.sendMail(mailOptions);
-
-    logger.info(`Password reset email sent to ${email}`);
-    res.status(httpStatus.OK).json({ message: 'Password reset email sent successfully' });
-  } catch (error) {
-    logger.error(`Error sending password reset email to ${req.body.email}`, { error: error.message });
-    res.status(httpStatus.SERVER_ERROR).json({
-      message: 'An error occurred while sending the reset email',
-      error: error.message,
+    const { resetToken, otp, newPassword } = req.body;
+    const result = await userService.verifyOtp(resetToken, otp, newPassword);
+    logger.info(`Password changed successfully `);
+    return res.status(httpStatus.OK).json(result);
+  } 
+  catch (error) {
+    logger.error(`Verify OTP error: ${error.message}`);
+    return res.status(httpStatus.BAD_REQUEST ).json({
+      success: false,
+      message: error.message,
     });
   }
 };
+
+
+
+
 
 exports.updateProfile = async (req, res) => {
   try {

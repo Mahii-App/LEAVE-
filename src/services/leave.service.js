@@ -3,19 +3,47 @@ const httpStatus = require('../utils/httpStatus');
 const messages = require('../utils/messages');
 const moment = require('moment');
 
+
 exports.applyLeave = async (user, body) => {
-  const { type, date, reason } = body;
-  const leaveDate = moment(date).startOf('day');
+  const { type, startDate, endDate, reason } = body;
+  const leaveStart = moment(startDate).startOf('day');
+  const leaveEnd = endDate ? moment(endDate).startOf('day') : leaveStart;
 
 
   if (!['Planned', 'Emergency'].includes(type)) {
     throw { status: httpStatus.BAD_REQUEST, message: 'Invalid leave type' };
   }
 
-  
+  if (leaveEnd.isBefore(leaveStart)) {
+    throw { status: httpStatus.BAD_REQUEST, message: 'End date cannot be before start date' };
+  }
+
+
+   //sat sun
+   const currentDate = moment(leaveStart);
+   while (currentDate.isSameOrBefore(leaveEnd)) {
+     const dayOfWeek = currentDate.day();
+     if (dayOfWeek === 0 || dayOfWeek === 6) {
+       throw { 
+         status: httpStatus.BAD_REQUEST, 
+         message: messages.LEAVE_ON_WEEKEND 
+       };
+     }
+     currentDate.add(1, 'day');
+   }
   const existingLeave = await Leave.findOne({
     user: user._id,
-    date: leaveDate.toDate()
+    // date: leaveDate.toDate()
+    // date: {
+    //   $gte: leaveStart.toDate(),
+    //   $lte: leaveEnd.toDate()
+    // }
+    $or: [
+      { startDate: { $gte: leaveStart.toDate(), $lte: leaveEnd.toDate() } },
+      { endDate: { $gte: leaveStart.toDate(), $lte: leaveEnd.toDate() } },
+      { startDate: { $lte: leaveStart.toDate() }, endDate: { $gte: leaveEnd.toDate() } } ,
+      { startDate: { $lte: leaveEnd.toDate() }, endDate: { $gte: leaveStart.toDate() } }
+    ]
   });
 
   if (existingLeave) {
@@ -23,14 +51,15 @@ exports.applyLeave = async (user, body) => {
   }
 
   
-  if (leaveDate.isBefore(moment().startOf('day').subtract(3, 'days'))) {
+  if (leaveStart.isBefore(moment().startOf('day').subtract(3, 'days'))) {
     throw { status: httpStatus.BAD_REQUEST, message: messages.LEAVE_BACKDATED };
   }
 
   const leave = new Leave({
     user: user._id,
     type,
-    date: leaveDate.toDate(),
+    startDate: leaveStart.toDate(),
+    endDate: leaveEnd.toDate(),
     reason
   });
 
@@ -45,7 +74,7 @@ exports.getLeaves = async (userId, query) => {
 
   const skips = (page - 1) * limit;
   const leaves = await Leave.find(filter)
-    .sort({ date: -1 })
+    .sort({ startDate: -1 })
     .skip(Number(skips))
     .limit(Number(limit));
 
